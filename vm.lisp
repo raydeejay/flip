@@ -24,6 +24,25 @@
     (values word visible-dict)))
 
 
+;; the dictionary holds lists of (symbol, memory-address, length)
+
+;; the code (a sequence of symbols, literals, or functions) is held in
+;; memory beginning at the address specified in the dictionary entry,
+;; one element in each memory position
+
+;; execution of a word consists in getting the address and length, and
+;; execute from memory in order
+
+;; DO
+;; push address, max, and count into the loop stack
+
+;; execute instruction at address IP in the memory
+
+;; LOOP
+;; increment count
+;; f count < max then set the IP to the address stored by DO
+
+
 ;; dictionary manipulation
 (defmacro add-primitive (name &body body)
   `(push (list ',name (lambda () ,@body))
