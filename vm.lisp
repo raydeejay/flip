@@ -5,11 +5,10 @@
 ;; https://users.ece.cmu.edu/~koopman/stack_computers/sec4_2.html
 
 
-
-;; IP is the forth's instruction pointer
-;; PC is the machine's program counter
 (defclass vm ()
-  ((memory        :accessor memory        :initform (make-array '(#xffff) :element-type '(unsigned-byte 8)))
+  ((memory        :accessor memory        :initform (make-array '(#xffff) :initial-element nil))
+   (free          :accessor free          :initform 0)
+   (ip            :accessor ip            :initform 0)
    (stack         :accessor stack         :initform nil)
    (dictionary    :accessor dictionary    :initform nil)
    (compiling?    :accessor compiling?    :initform nil)
@@ -24,6 +23,7 @@
     (values word visible-dict)))
 
 
+;; dictionary manipulation
 ;; the dictionary holds lists of (symbol, memory-address, length)
 
 ;; the code (a sequence of symbols, literals, or functions) is held in
@@ -43,18 +43,44 @@
 ;; f count < max then set the IP to the address stored by DO
 
 
-;; dictionary manipulation
 (defmacro add-primitive (name &body body)
-  `(push (list ',name (lambda () ,@body))
-         (dictionary vm)))
+  ;; get the first available position in memory
+  `(let ((word-address (free vm)))
+     ;; put the code, one token at a time, in memory
+     (setf (elt (memory vm) (free vm)) (lambda () ,@body))
+     ;; update the first available position
+     (incf (free vm))
+     ;; add the entry in the dictionary
+     (push (list ',name word-address 1)
+           (dictionary vm))))
 
 (defmacro add-word (name &body body)
-  `(push (cons ',name ',body)
-         (dictionary vm)))
+  ;; get the first available position in memory
+  `(loop :with word-address := (free vm)
+      ;; put the code, one token at a time, in memory
+      :for token :in ',body :doing
+      (setf (elt (memory vm) (free vm)) token)
+      ;; update the first available position
+      (incf (free vm))
+      ;; count the bytes
+      :summing 1 :into length
+      ;; add the entry in the dictionary
+      :finally (push (list ',name word-address length)
+                     (dictionary vm))))
 
-(defmacro add-word% (name body)
-  `(push (cons ,name ,body)
-         (dictionary vm)))
+(defmacro add-word% (name &body body)
+  ;; get the first available position in memory
+  `(loop :with word-address := (free vm)
+      ;; put the code, one token at a time, in memory
+      :for token :in ,@body :doing
+      (setf (elt (memory vm) (free vm)) token)
+      ;; update the first available position
+      (incf (free vm))
+      ;; count the bytes
+      :summing 1 :into length
+      ;; add the entry in the dictionary
+      :finally (push (list ,name word-address length)
+                     (dictionary vm))))
 
 (defmacro forget-word (name)
   `(let ((visible-dict (nth-value 1 (find-word vm ',name))))
@@ -123,18 +149,24 @@
   (add-word sq dup *))
 
 
-
 ;; compile/execute
 (defun interpret-word (vm symbol &optional dict)
-  (multiple-value-bind (word visible-dict) (find-word vm symbol dict)
-    (when (null word) (error "Word ~A not found in the dictionary." symbol))
-    (loop :for token :in (cdr word)
-       :do (cond ((numberp token)
-                  (push token (stack vm)))
-                 ((functionp token)
-                  (funcall token))
-                 ((symbolp token)
-                  (interpret-word vm token visible-dict))))))
+  (multiple-value-bind (header visible-dict) (find-word vm symbol dict)
+    (when (null header) (error "Word ~A not found in the dictionary." symbol))
+    (destructuring-bind (word address length) header
+      (declare (ignore word))
+      (setf (ip vm) address)
+      (loop :while (< (ip vm) (+ address length))
+         :do (let ((token (elt (memory vm) (ip vm)))
+                   (ip (ip vm)))        ; preserve the IP
+               (cond ((numberp token)
+                      (push token (stack vm)))
+                     ((functionp token)
+                      (funcall token))
+                     ((symbolp token)
+                      (interpret-word vm token visible-dict)))
+               (setf (ip vm) ip) ; and restore it after a potential call
+               (incf (ip vm)))))))      ; then increment it
 
 (defmethod execute ((vm vm) token)
   (cond ((numberp token)
@@ -151,8 +183,8 @@
   (cond ((numberp token)
          (push token (compiled-code vm)))
         ((member token *immediate-words* :test #'equal)
-         ;; assume that all immediates are primitives (ugh...)
-         (funcall (cadr (find-word vm token))))
+         ;; assume that all immediates are primitives (ugh...?)
+         (funcall (elt (memory vm) (cadr (find-word vm token)))))
         ((find-word vm token)
          (push token (compiled-code vm)))
         ((functionp token)
