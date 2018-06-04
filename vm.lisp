@@ -11,7 +11,7 @@
 (defclass vm ()
   ((memory        :accessor memory        :initform (make-array '(#xffff) :element-type '(unsigned-byte 8)))
    (stack         :accessor stack         :initform nil)
-   (dictionary    :accessor dictionary    :initarg  :dictionary :initform nil)
+   (dictionary    :accessor dictionary    :initform nil)
    (compiling?    :accessor compiling?    :initform nil)
    (compiled-code :accessor compiled-code :initform nil)
    (input         :accessor input         :initform nil))
