@@ -95,7 +95,6 @@
   ;; "magic" words
   (add-primitive \:   (setf (compiling? vm) T))
   (add-primitive \;   (let* ((code (reverse (compiled-code vm))))
-                        (break)
                         (add-word% (car code) (cdr code))
                         (setf (compiled-code vm) nil)
                         (setf (compiling? vm) nil)))
@@ -130,7 +129,6 @@
 (defparameter *immediate-words* '(forget \;))
 
 (defmethod compile* ((vm vm) token)
-  (break)
   (cond ((numberp token)
          (push token (compiled-code vm)))
         ((member token *immediate-words* :test #'equal)
